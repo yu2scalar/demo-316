@@ -147,6 +147,20 @@ public class NsMysqlSctService {
         }
     }
 
+    // Retrieve All Records
+    public List<NsMysqlSctDto> getNsMysqlSctListAllWithReadOnly() throws CustomException {
+        DistributedTransaction transaction = null;
+        List<NsMysqlSct> sctList = new ArrayList<>();
+        try {
+            transaction = manager.beginReadOnly();
+            sctList = sctRepository.getNsMysqlSctListAll(transaction);
+            return NsMysqlSctMapper.mapToNsMysqlSctDtoList(sctList);
+        } catch (Exception e) {
+            handleTransactionException(e, transaction);
+            throw new CustomException(e, determineErrorCode(e));
+        }
+    }
+
     // Retrieve Records by Partition Key
     public List<NsMysqlSctDto> getNsMysqlSctListByPk(NsMysqlSctDto sctDto) throws CustomException {
         DistributedTransaction transaction = null;

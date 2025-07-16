@@ -74,6 +74,10 @@ public class NsMysqlSctController {
     public ResponseEntity<List<NsMysqlSctDto>> getNsMysqlSctListAll() throws CustomException {
         return ResponseEntity.ok(sctService.getNsMysqlSctListAll());
     }
+    @GetMapping("/scanAllWithReadOnly")
+    public ResponseEntity<List<NsMysqlSctDto>> getNsMysqlSctListAllWithReadOnly() throws CustomException {
+        return ResponseEntity.ok(sctService.getNsMysqlSctListAllWithReadOnly());
+    }
 
     @PostMapping("/executeSQL")
     public ResponseEntity<List<NsMysqlSctDto>> executeSQL(@RequestBody SqlCommandDto sqlCommandDto) throws CustomException {
