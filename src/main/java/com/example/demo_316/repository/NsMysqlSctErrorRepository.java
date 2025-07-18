@@ -42,7 +42,6 @@ public class NsMysqlSctErrorRepository {
             .partitionKey(partitionKey)
             .clusteringKey(clusteringKey)
             .textValue(NsMysqlSctError.EXCEPTION, sctError.getException())
-            .timestampValue(NsMysqlSctError.EXCEPTION_AT, sctError.getExceptionAt())
             .build();
         transaction.insert(insert);
         return sctError;
@@ -60,7 +59,6 @@ public class NsMysqlSctErrorRepository {
             .partitionKey(partitionKey)
             .clusteringKey(clusteringKey)
             .textValue(NsMysqlSctError.EXCEPTION, sctError.getException())
-            .timestampValue(NsMysqlSctError.EXCEPTION_AT, sctError.getExceptionAt())
             .condition(condition)
             .build();
         transaction.update(update);
@@ -77,7 +75,6 @@ public class NsMysqlSctErrorRepository {
             .partitionKey(partitionKey)
             .clusteringKey(clusteringKey)
             .textValue(NsMysqlSctError.EXCEPTION, sctError.getException())
-            .timestampValue(NsMysqlSctError.EXCEPTION_AT, sctError.getExceptionAt())
             .build();
         transaction.upsert(upsert);
         return sctError;

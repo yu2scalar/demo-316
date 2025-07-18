@@ -32,6 +32,26 @@ public class NsMysqlSctRepository {
         return buildNsMysqlSct(result.get());
     }
 
+    // Get Record by Partition & Clustering Key
+    public NsMysqlSct getNsMysqlSctOO(DistributedTransactionManager transaction, NsMysqlSct sct) throws CrudException, UnknownTransactionStatusException {
+        Key partitionKey = sct.getPartitionKey();
+        Key clusteringKey = sct.getClusteringKey();
+        Get get = Get.newBuilder()
+                .namespace(NsMysqlSct.NAMESPACE)
+                .table(NsMysqlSct.TABLE)
+                .partitionKey(partitionKey)
+
+                .clusteringKey(clusteringKey)
+                .projections(NsMysqlSct.PK, NsMysqlSct.CK, NsMysqlSct.STRING_VALUE, NsMysqlSct.BINT_VALUE)
+                .build();
+        Optional<Result> result = transaction.get(get);
+        if (result.isEmpty()) {
+            throw new RuntimeException("No record found in NsMysqlSct");
+        }
+        return buildNsMysqlSct(result.get());
+    }
+
+
     // Insert Record
     public NsMysqlSct postNsMysqlSct(DistributedTransaction transaction, NsMysqlSct sct) throws CrudException {
         Key partitionKey = sct.getPartitionKey();
@@ -47,6 +67,23 @@ public class NsMysqlSctRepository {
         transaction.insert(insert);
         return sct;
     }
+
+    // Insert Record
+    public NsMysqlSct postNsMysqlSctOO(DistributedTransactionManager transaction, NsMysqlSct sct) throws CrudException, UnknownTransactionStatusException {
+        Key partitionKey = sct.getPartitionKey();
+        Key clusteringKey = sct.getClusteringKey();
+        Insert insert = Insert.newBuilder()
+                .namespace(NsMysqlSct.NAMESPACE)
+                .table(NsMysqlSct.TABLE)
+                .partitionKey(partitionKey)
+                .clusteringKey(clusteringKey)
+                .textValue(NsMysqlSct.STRING_VALUE, sct.getStringValue())
+                .bigIntValue(NsMysqlSct.BINT_VALUE, sct.getBintValue())
+                .build();
+        transaction.insert(insert);
+        return sct;
+    }
+
 
     // Update Record
     public NsMysqlSct putNsMysqlSct(DistributedTransaction transaction, NsMysqlSct sct) throws CrudException {
@@ -67,18 +104,53 @@ public class NsMysqlSctRepository {
         return sct;
     }
 
+    // Update Record
+    public NsMysqlSct putNsMysqlSctOO(DistributedTransactionManager transaction, NsMysqlSct sct) throws CrudException, UnknownTransactionStatusException {
+        Key partitionKey = sct.getPartitionKey();
+        Key clusteringKey = sct.getClusteringKey();
+        MutationCondition condition = ConditionBuilder.updateIfExists();
+
+        Update update = Update.newBuilder()
+                .namespace(NsMysqlSct.NAMESPACE)
+                .table(NsMysqlSct.TABLE)
+                .partitionKey(partitionKey)
+                .clusteringKey(clusteringKey)
+                .textValue(NsMysqlSct.STRING_VALUE, sct.getStringValue())
+                .bigIntValue(NsMysqlSct.BINT_VALUE, sct.getBintValue())
+                .condition(condition)
+                .build();
+        transaction.update(update);
+        return sct;
+    }
+
     // Upsert Record
     public NsMysqlSct upsertNsMysqlSct(DistributedTransaction transaction, NsMysqlSct sct) throws CrudException {
         Key partitionKey = sct.getPartitionKey();
         Key clusteringKey = sct.getClusteringKey();
         Upsert upsert = Upsert.newBuilder()
-            .namespace(NsMysqlSct.NAMESPACE)
-            .table(NsMysqlSct.TABLE)
-            .partitionKey(partitionKey)
-            .clusteringKey(clusteringKey)
-            .textValue(NsMysqlSct.STRING_VALUE, sct.getStringValue())
-            .bigIntValue(NsMysqlSct.BINT_VALUE, sct.getBintValue())
-            .build();
+                .namespace(NsMysqlSct.NAMESPACE)
+                .table(NsMysqlSct.TABLE)
+                .partitionKey(partitionKey)
+                .clusteringKey(clusteringKey)
+                .textValue(NsMysqlSct.STRING_VALUE, sct.getStringValue())
+                .bigIntValue(NsMysqlSct.BINT_VALUE, sct.getBintValue())
+                .build();
+        transaction.upsert(upsert);
+        return sct;
+    }
+
+    // Upsert Record
+    public NsMysqlSct upsertNsMysqlSctOO(DistributedTransactionManager transaction, NsMysqlSct sct) throws CrudException, UnknownTransactionStatusException {
+        Key partitionKey = sct.getPartitionKey();
+        Key clusteringKey = sct.getClusteringKey();
+        Upsert upsert = Upsert.newBuilder()
+                .namespace(NsMysqlSct.NAMESPACE)
+                .table(NsMysqlSct.TABLE)
+                .partitionKey(partitionKey)
+                .clusteringKey(clusteringKey)
+                .textValue(NsMysqlSct.STRING_VALUE, sct.getStringValue())
+                .bigIntValue(NsMysqlSct.BINT_VALUE, sct.getBintValue())
+                .build();
         transaction.upsert(upsert);
         return sct;
     }
@@ -96,6 +168,22 @@ public class NsMysqlSctRepository {
             .clusteringKey(clusteringKey)
             .condition(condition)
             .build();
+        transaction.delete(delete);
+    }
+
+    // Delete Record
+    public void deleteNsMysqlSctOO(DistributedTransactionManager transaction, NsMysqlSct sct) throws CrudException, UnknownTransactionStatusException {
+        Key partitionKey = sct.getPartitionKey();
+        Key clusteringKey = sct.getClusteringKey();
+        MutationCondition condition = ConditionBuilder.deleteIfExists();
+        Delete delete = Delete.newBuilder()
+                .namespace(NsMysqlSct.NAMESPACE)
+                .table(NsMysqlSct.TABLE)
+                .partitionKey(partitionKey)
+
+                .clusteringKey(clusteringKey)
+                .condition(condition)
+                .build();
         transaction.delete(delete);
     }
 

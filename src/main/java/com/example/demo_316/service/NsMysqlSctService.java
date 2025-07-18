@@ -27,6 +27,7 @@ public class NsMysqlSctService {
     DistributedTransactionManager manager;
     SqlSessionFactory sqlSessionFactory;
 
+    final boolean isOO = false;
     @Autowired
     NsMysqlSctRepository sctRepository;
 
@@ -61,9 +62,17 @@ public class NsMysqlSctService {
         DistributedTransaction transaction = null;
         try {
             NsMysqlSct sct = NsMysqlSctMapper.mapToNsMysqlSct(sctDto);
-            transaction = manager.start();
-            sct = sctRepository.postNsMysqlSct(transaction, sct);
-            transaction.commit();
+            if(isOO) {
+                sct = sctRepository.postNsMysqlSctOO(manager, sct);
+            }
+            else {
+                transaction = manager.start();
+//            transaction = manager.beginReadOnly();
+
+                sct = sctRepository.postNsMysqlSct(transaction, sct);
+                transaction.commit();
+            }
+
             return ResponseStatusDto.builder().code(0).message("").build();
         } catch (Exception e) {
             handleTransactionException(e, transaction);
@@ -76,9 +85,15 @@ public class NsMysqlSctService {
         DistributedTransaction transaction = null;
         try {
             NsMysqlSct sct = NsMysqlSctMapper.mapToNsMysqlSct(sctDto);
-            transaction = manager.start();
-            sct = sctRepository.upsertNsMysqlSct(transaction, sct);
-            transaction.commit();
+            if(isOO) {
+                sct = sctRepository.upsertNsMysqlSctOO(manager, sct);
+            }
+            else {
+                transaction = manager.start();
+                sct = sctRepository.upsertNsMysqlSct(transaction, sct);
+                transaction.commit();
+            }
+
             return ResponseStatusDto.builder().code(0).message("").build();
         } catch (Exception e) {
             handleTransactionException(e, transaction);
@@ -91,9 +106,17 @@ public class NsMysqlSctService {
         DistributedTransaction transaction = null;
         try {
             NsMysqlSct sct = NsMysqlSctMapper.mapToNsMysqlSct(sctDto);
-            transaction = manager.start();
-            sct = sctRepository.getNsMysqlSct(transaction, sct);
-            transaction.commit();
+            if(isOO) {
+                sct = sctRepository.getNsMysqlSctOO(manager, sct);
+            }
+            else {
+                transaction = manager.start();
+//            transaction = manager.beginReadOnly();
+
+                sct = sctRepository.getNsMysqlSct(transaction, sct);
+                transaction.commit();
+            }
+
             return NsMysqlSctMapper.mapToNsMysqlSctDto(sct);
         } catch (Exception e) {
             handleTransactionException(e, transaction);
@@ -106,9 +129,16 @@ public class NsMysqlSctService {
         DistributedTransaction transaction = null;
         try {
             NsMysqlSct sct = NsMysqlSctMapper.mapToNsMysqlSct(sctDto);
-            transaction = manager.start();
-            sct = sctRepository.putNsMysqlSct(transaction, sct);
-            transaction.commit();
+
+            if(isOO) {
+                sct = sctRepository.putNsMysqlSctOO(manager, sct);
+            }
+            else {
+                transaction = manager.start();
+
+                sct = sctRepository.putNsMysqlSct(transaction, sct);
+                transaction.commit();
+            }
             return ResponseStatusDto.builder().code(0).message("").build();
         } catch (Exception e) {
             handleTransactionException(e, transaction);
@@ -121,11 +151,16 @@ public class NsMysqlSctService {
         DistributedTransaction transaction = null;
         try {
             NsMysqlSct sct = NsMysqlSctMapper.mapToNsMysqlSct(sctDto);
-//            Key partitionKey = sct.getPartitionKey();
-//            Key clusteringKey = sct.getClusteringKey();
-            transaction = manager.start();
-            sctRepository.deleteNsMysqlSct(transaction, sct);
-            transaction.commit();
+
+            if(isOO) {
+                sctRepository.deleteNsMysqlSctOO(manager, sct);
+            }
+            else {
+                transaction = manager.start();
+                sctRepository.deleteNsMysqlSct(transaction, sct);
+                transaction.commit();
+            }
+
             return ResponseStatusDto.builder().code(0).message("").build();
         } catch (Exception e) {
             handleTransactionException(e, transaction);
@@ -203,6 +238,7 @@ public class NsMysqlSctService {
     private int determineErrorCode(Exception e) {
         if (e instanceof UnsatisfiedConditionException) return 9100;
         if (e instanceof UnknownTransactionStatusException) return 9200;
+        if (e.getClass().getSimpleName().equals("CommitConflictException")) return 9150;
         if (e instanceof TransactionException) return 9300;
         if (e instanceof RuntimeException) return 9400;
         return 9500;

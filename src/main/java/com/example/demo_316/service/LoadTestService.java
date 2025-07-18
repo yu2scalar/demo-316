@@ -97,9 +97,15 @@ public class LoadTestService {
         // Cleanup if requested
         boolean cleanupExecuted = false;
         int cleanupRecordsDeleted = 0;
+        
+        log.info("Cleanup check: cleanupAfterTest = {}", loadTestDto.getCleanupAfterTest());
+        
         if (loadTestDto.getCleanupAfterTest() != null && loadTestDto.getCleanupAfterTest()) {
+            log.info("Executing cleanup for PK: {}", loadTestDto.getPk());
             cleanupRecordsDeleted = performCleanup(loadTestDto.getPk());
             cleanupExecuted = true;
+        } else {
+            log.info("Cleanup skipped - cleanupAfterTest is false or null");
         }
 
         // Build and return result
@@ -152,17 +158,29 @@ public class LoadTestService {
         AtomicInteger statsInsertError, AtomicInteger statsSelectError,
         AtomicInteger statsUpdateError, AtomicInteger statsDeleteError) {
         
-        AtomicInteger operationIndex = new AtomicInteger(0);
+        // Start each thread with a different initial operationIndex to avoid conflicts
+        AtomicInteger operationIndex = new AtomicInteger(threadId * 1000);
+        
+        // Add small random delay to prevent exact timing conflicts between threads
+        try {
+            Thread.sleep(threadId * 10); // 10ms, 20ms, 30ms, etc. delay per thread
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
 
         while (System.currentTimeMillis() < testEndTime) {
             long currentTime = System.currentTimeMillis();
             boolean isStatisticsPeriod = currentTime >= rampUpEndTime;
 
             // Generate CK using thread-based formula: (threadNumber * 1000000) + operationIndex
-            int currentCk = (threadId * 1000000) + operationIndex.getAndIncrement();
+            int currentOperationIndex = operationIndex.getAndIncrement();
+            int currentCk = (threadId * 1000000) + currentOperationIndex;
+            
+            // Debug logging for key generation
+            log.debug("Thread {} generating CK: {} (operationIndex: {})", threadId, currentCk, currentOperationIndex);
 
             // Always perform INSERT
-            performInsert(loadTestDto.getPk(), currentCk, threadId, operationIndex.get(),
+            performInsert(loadTestDto.getPk(), currentCk, threadId, currentOperationIndex,
                         isStatisticsPeriod, totalOperations, statisticsOperations,
                         statsInsertCount, statsInsertSuccess, statsInsertError, exceptionsRecorded, loadTestDto);
 
@@ -173,14 +191,14 @@ public class LoadTestService {
             
             // Execute guaranteed select loops
             for (int i = 0; i < selectLoops; i++) {
-                performSelect(loadTestDto.getPk(), currentCk, threadId, operationIndex.get(),
+                performSelect(loadTestDto.getPk(), currentCk, threadId, currentOperationIndex,
                             isStatisticsPeriod, totalOperations, statisticsOperations,
                             statsSelectCount, statsSelectSuccess, statsSelectError, exceptionsRecorded, loadTestDto);
             }
             
             // Additional select loop based on fractional probability
             if (selectFractional > 0 && random.nextDouble() < selectFractional) {
-                performSelect(loadTestDto.getPk(), currentCk, threadId, operationIndex.get(),
+                performSelect(loadTestDto.getPk(), currentCk, threadId, currentOperationIndex,
                             isStatisticsPeriod, totalOperations, statisticsOperations,
                             statsSelectCount, statsSelectSuccess, statsSelectError, exceptionsRecorded, loadTestDto);
             }
@@ -192,14 +210,14 @@ public class LoadTestService {
 
             // Execute guaranteed update loops
             for (int i = 0; i < updateLoops; i++) {
-                performUpdate(loadTestDto.getPk(), currentCk, threadId, operationIndex.get(), i, false,
+                performUpdate(loadTestDto.getPk(), currentCk, threadId, currentOperationIndex, i, false,
                             isStatisticsPeriod, totalOperations, statisticsOperations,
                             statsUpdateCount, statsUpdateSuccess, statsUpdateError, exceptionsRecorded, loadTestDto);
             }
 
             // Additional update loop based on fractional probability
             if (updateFractional > 0 && random.nextDouble() < updateFractional) {
-                performUpdate(loadTestDto.getPk(), currentCk, threadId, operationIndex.get(), updateLoops, true,
+                performUpdate(loadTestDto.getPk(), currentCk, threadId, currentOperationIndex, updateLoops, true,
                             isStatisticsPeriod, totalOperations, statisticsOperations,
                             statsUpdateCount, statsUpdateSuccess, statsUpdateError, exceptionsRecorded, loadTestDto);
             }
@@ -211,14 +229,14 @@ public class LoadTestService {
             
             // Execute guaranteed delete loops
             for (int i = 0; i < deleteLoops; i++) {
-                performDelete(loadTestDto.getPk(), currentCk, threadId, operationIndex.get(),
+                performDelete(loadTestDto.getPk(), currentCk, threadId, currentOperationIndex,
                             isStatisticsPeriod, totalOperations, statisticsOperations,
                             statsDeleteCount, statsDeleteSuccess, statsDeleteError, exceptionsRecorded, loadTestDto);
             }
             
             // Additional delete loop based on fractional probability
             if (deleteFractional > 0 && random.nextDouble() < deleteFractional) {
-                performDelete(loadTestDto.getPk(), currentCk, threadId, operationIndex.get(),
+                performDelete(loadTestDto.getPk(), currentCk, threadId, currentOperationIndex,
                             isStatisticsPeriod, totalOperations, statisticsOperations,
                             statsDeleteCount, statsDeleteSuccess, statsDeleteError, exceptionsRecorded, loadTestDto);
             }
@@ -379,18 +397,60 @@ public class LoadTestService {
             PrintWriter pw = new PrintWriter(sw);
             e.printStackTrace(pw);
 
-            NsMysqlSctErrorDto errorDto = NsMysqlSctErrorDto.builder()
-                .pk(pk)
-                .ck(ck)
-                .exception(operationType + " failed: " + e.getMessage() + "\nStackTrace: " + sw.toString())
-                .exceptionAt(LocalDateTime.now())
-                .build();
+            // Truncate to millisecond precision for ScalarDB compatibility
+            LocalDateTime now = LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
+            
+            // Truncate exception message to prevent gRPC header size issues (max 8KB to be safe)
+            String fullExceptionMessage = operationType + " failed: " + e.getMessage() + "\nStackTrace: " + sw.toString();
+            String truncatedMessage = truncateExceptionMessage(fullExceptionMessage, 8192);
+            
+            // Try to record the exception with retry logic for timestamp conflicts
+            int retryCount = 0;
+            while (retryCount < 3) {
+                try {
+                    NsMysqlSctErrorDto errorDto = NsMysqlSctErrorDto.builder()
+                        .pk(pk)
+                        .ck(ck)
+                        .exception(truncatedMessage)
+                        .exceptionAt(now.plusNanos(retryCount * 1000000L).truncatedTo(java.time.temporal.ChronoUnit.MILLIS)) // Add milliseconds for uniqueness
+                        .build();
 
-            sctErrorService.postNsMysqlSctError(errorDto);
-            exceptionsRecorded.incrementAndGet();
+                    sctErrorService.postNsMysqlSctError(errorDto);
+                    exceptionsRecorded.incrementAndGet();
+                    break; // Success, exit retry loop
+                } catch (Exception ex) {
+                    retryCount++;
+                    if (retryCount >= 3) {
+                        log.error("Failed to record exception after {} retries: {}", retryCount, ex.getMessage());
+                    } else {
+                        log.warn("Exception recording failed, retrying... (attempt {}/3): {}", retryCount, ex.getMessage());
+                        // Add a small delay between retries
+                        try {
+                            Thread.sleep(10);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
+                    }
+                }
+            }
         } catch (Exception ex) {
             log.error("Failed to record exception: {}", ex.getMessage());
         }
+    }
+    
+    private String truncateExceptionMessage(String message, int maxLength) {
+        if (message == null) {
+            return null;
+        }
+        
+        if (message.length() <= maxLength) {
+            return message;
+        }
+        
+        // Truncate and add indication that it was truncated
+        String truncated = message.substring(0, maxLength - 50); // Leave room for truncation message
+        return truncated + "\n... [TRUNCATED - Original length: " + message.length() + " chars]";
     }
 
     private int performCleanup(Integer pk) {
@@ -400,7 +460,7 @@ public class LoadTestService {
             NsMysqlSctDto searchDto = NsMysqlSctDto.builder().pk(pk).build();
             List<NsMysqlSctDto> sctRecords = sctService.getNsMysqlSctListByPk(searchDto);
 
-            // Delete all sct records
+            // Delete all sct records only (preserve sct_error records for analysis)
             for (NsMysqlSctDto record : sctRecords) {
                 try {
                     sctService.deleteNsMysqlSct(record);
@@ -410,19 +470,7 @@ public class LoadTestService {
                 }
             }
 
-            // Get all error records with the specified PK from sct_error table
-            NsMysqlSctErrorDto searchErrorDto = NsMysqlSctErrorDto.builder().pk(pk).build();
-            List<NsMysqlSctErrorDto> errorRecords = sctErrorService.getNsMysqlSctErrorListByPk(searchErrorDto);
-
-            // Delete all error records
-            for (NsMysqlSctErrorDto record : errorRecords) {
-                try {
-                    sctErrorService.deleteNsMysqlSctError(record);
-                    deletedRecords++;
-                } catch (Exception e) {
-                    log.error("Failed to delete error record: {}", e.getMessage());
-                }
-            }
+            log.info("Cleanup completed: {} sct records deleted for PK {}. Error records preserved for analysis.", deletedRecords, pk);
         } catch (Exception e) {
             log.error("Cleanup failed: {}", e.getMessage());
         }

@@ -11,23 +11,23 @@ import java.nio.ByteBuffer;
 @Builder
 public class NsMysqlSctError {
 
-    public static final String NAMESPACE = "ns_mysql";
-    public static final String TABLE = "sct_error";
-    public static final String PK = "pk";
-    public static final String CK = "ck";
-    public static final String EXCEPTION = "exception";
-    public static final String EXCEPTION_AT = "exception_at";
-
-    private Integer pk;
-    private Integer ck;
-    private String exception;
-    private LocalDateTime exceptionAt;
-
-    public Key getPartitionKey() {
-        return Key.newBuilder().addInt(PK, getPk()).build();
+        public static final String NAMESPACE = "ns_mysql";
+        public static final String TABLE = "sct_error";
+        public static final String PK = "pk";
+        public static final String CK = "ck";
+        public static final String EXCEPTION = "exception";
+        public static final String EXCEPTION_AT = "exception_at";
+        private Integer pk;
+        private Integer ck;
+        private String exception;
+        private LocalDateTime exceptionAt;
+        public Key getPartitionKey(){
+            return Key.newBuilder().addInt(PK, getPk()).build();
+        }
+        public Key getClusteringKey(){
+            return Key.newBuilder()
+                .addInt(CK, getCk())
+                .addTimestamp(EXCEPTION_AT, getExceptionAt())
+                .build();
+        }
     }
-
-    public Key getClusteringKey() {
-        return Key.newBuilder().addInt(CK, getCk()).build();
-    }
-}

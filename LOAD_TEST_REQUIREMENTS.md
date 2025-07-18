@@ -17,9 +17,9 @@ The application contains two main controllers with standard CRUD operations:
 
 #### NsMysqlSctError
 - `pk` (Integer) - Primary Key
-- `ck` (Integer) - Cluster Key
+- `ck` (Integer) - Cluster Key (Part 1)
+- `exception_at` (LocalDateTime) - Cluster Key (Part 2)
 - `exception` (String) - Exception message
-- `exceptionAt` (LocalDateTime) - Exception timestamp
 
 ## Requirements
 
@@ -77,11 +77,12 @@ When any operation throws an exception:
 1. Record the exception details to `sct_error` table with:
    - `pk`: Same as the failed operation
    - `ck`: Same as the failed operation
+   - `exception_at`: Current timestamp (part of clustering key)
    - `exception`: Exception message and stack trace
-   - `exceptionAt`: Current timestamp
 2. Wait for `exceptionRetryInterval` milliseconds
 3. Continue with the next operation
-4. Do not terminate the entire load test
+4. Multiple exceptions for the same PK/CK will create separate records with different timestamps
+5. Do not terminate the entire load test
 
 ### 3. Operation Execution Logic
 
@@ -200,20 +201,20 @@ Each thread executes the following loop until test duration expires:
 - **Insert**:
   - `pk`: Use provided PK value
   - `ck`: Thread-based calculation (threadNumber * 1000000 + operationIndex)
+  - `exception_at`: Current timestamp (required for clustering key)
   - `exception`: "LoadTest_Exception_T{threadNumber}_{operationIndex}"
-  - `exceptionAt`: current timestamp
 - **Update**:
   - `pk`: Same as insert
   - `ck`: Same as insert
+  - `exception_at`: Current timestamp (required for clustering key)
   - `exception`: "Updated_Exception_T{threadNumber}_{operationIndex}_{updateCount}" or "Updated_fractional_Exception_T{threadNumber}_{operationIndex}"
-  - `exceptionAt`: current timestamp
 
 #### 4.3 For Exception Recording
 When recording exceptions to sct_error:
 - `pk`: PK of the failed operation
 - `ck`: CK of the failed operation
+- `exception_at`: Current timestamp (part of clustering key)
 - `exception`: "{OperationType} failed: {ExceptionMessage}\nStackTrace: {StackTrace}"
-- `exceptionAt`: Current timestamp
 
 ### 5. Ramp-up Time and Statistics Collection
 - **Ramp-up Period**: Execute operations for `rampUpTimeSeconds` before starting statistics collection
@@ -223,15 +224,16 @@ When recording exceptions to sct_error:
 - **Time-based Control**: Both ramp-up and statistics periods are controlled by time duration, not loop count
 
 ### 6. Test Data Cleanup
-- **Optional Cleanup**: When `cleanupAfterTest` is set to `true`, delete all test records after statistics calculation
-- **Cleanup Scope**: Delete all records with the specified `pk` value from both main table and sct_error table
+- **Optional Cleanup**: When `cleanupAfterTest` is set to `true`, delete test records after statistics calculation
+- **Cleanup Scope**: Delete all records with the specified `pk` value from `sct` table only
+- **Error Record Preservation**: `sct_error` table records are preserved for analysis and debugging
 - **Timing**: Cleanup occurs after all statistics have been calculated and response is prepared
 - **Multi-threading**: Cleanup runs on main thread after all worker threads complete
 - **Error Handling**: Cleanup failures are logged but do not affect test results
 - **Cleanup Process**:
   1. Calculate and prepare all statistics
   2. If `cleanupAfterTest` is true, delete all records where `pk` equals the test PK
-  3. For NsMysqlSct tests: delete from both `sct` and `sct_error` tables
+  3. For NsMysqlSct tests: delete from `sct` table only (preserve error records)
   4. For NsMysqlSctError tests: delete from `sct_error` table only
   5. Return response with cleanup status
 
