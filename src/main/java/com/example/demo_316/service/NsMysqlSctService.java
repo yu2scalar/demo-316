@@ -27,7 +27,6 @@ public class NsMysqlSctService {
     DistributedTransactionManager manager;
     SqlSessionFactory sqlSessionFactory;
 
-    final boolean isOO = false;
     @Autowired
     NsMysqlSctRepository sctRepository;
 
@@ -59,6 +58,10 @@ public class NsMysqlSctService {
 
     // Create Record
     public ResponseStatusDto postNsMysqlSct(NsMysqlSctDto sctDto) throws CustomException {
+        return postNsMysqlSct(sctDto, false);
+    }
+    
+    public ResponseStatusDto postNsMysqlSct(NsMysqlSctDto sctDto, boolean isOO) throws CustomException {
         DistributedTransaction transaction = null;
         try {
             NsMysqlSct sct = NsMysqlSctMapper.mapToNsMysqlSct(sctDto);
@@ -82,6 +85,10 @@ public class NsMysqlSctService {
 
     // Upsert Record
     public ResponseStatusDto upsertNsMysqlSct(NsMysqlSctDto sctDto) throws CustomException {
+        return upsertNsMysqlSct(sctDto, false);
+    }
+    
+    public ResponseStatusDto upsertNsMysqlSct(NsMysqlSctDto sctDto, boolean isOO) throws CustomException {
         DistributedTransaction transaction = null;
         try {
             NsMysqlSct sct = NsMysqlSctMapper.mapToNsMysqlSct(sctDto);
@@ -103,6 +110,10 @@ public class NsMysqlSctService {
 
     // Retrieve Record
     public NsMysqlSctDto getNsMysqlSct(NsMysqlSctDto sctDto) throws CustomException {
+        return getNsMysqlSct(sctDto, false);
+    }
+    
+    public NsMysqlSctDto getNsMysqlSct(NsMysqlSctDto sctDto, boolean isOO) throws CustomException {
         DistributedTransaction transaction = null;
         try {
             NsMysqlSct sct = NsMysqlSctMapper.mapToNsMysqlSct(sctDto);
@@ -126,6 +137,10 @@ public class NsMysqlSctService {
 
     // Update Record
     public ResponseStatusDto putNsMysqlSct(NsMysqlSctDto sctDto) throws CustomException {
+        return putNsMysqlSct(sctDto, false);
+    }
+    
+    public ResponseStatusDto putNsMysqlSct(NsMysqlSctDto sctDto, boolean isOO) throws CustomException {
         DistributedTransaction transaction = null;
         try {
             NsMysqlSct sct = NsMysqlSctMapper.mapToNsMysqlSct(sctDto);
@@ -148,6 +163,10 @@ public class NsMysqlSctService {
 
     // Delete Record
     public ResponseStatusDto deleteNsMysqlSct(NsMysqlSctDto sctDto) throws CustomException {
+        return deleteNsMysqlSct(sctDto, false);
+    }
+    
+    public ResponseStatusDto deleteNsMysqlSct(NsMysqlSctDto sctDto, boolean isOO) throws CustomException {
         DistributedTransaction transaction = null;
         try {
             NsMysqlSct sct = NsMysqlSctMapper.mapToNsMysqlSct(sctDto);

@@ -54,4 +54,7 @@ public class LoadTestDto {
     
     @NotNull
     private Boolean cleanupAfterTest;
+    
+    @Builder.Default
+    private Boolean isOO = false;
 }

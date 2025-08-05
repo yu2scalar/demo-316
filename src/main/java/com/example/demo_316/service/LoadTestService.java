@@ -265,7 +265,7 @@ public class LoadTestService {
                 .bintValue((long) (threadId * 1000000 + operationIndex))
                 .build();
 
-            sctService.postNsMysqlSct(insertDto);
+            sctService.postNsMysqlSct(insertDto, loadTestDto.getIsOO());
 
             totalOps.incrementAndGet();
             if (isStatisticsPeriod) {
@@ -295,7 +295,7 @@ public class LoadTestService {
                 .ck(ck)
                 .build();
 
-            sctService.getNsMysqlSct(selectDto);
+            sctService.getNsMysqlSct(selectDto, loadTestDto.getIsOO());
 
             totalOps.incrementAndGet();
             if (isStatisticsPeriod) {
@@ -331,7 +331,7 @@ public class LoadTestService {
                 .bintValue((long) (threadId * 1000000 + operationIndex + updateCount * 100))
                 .build();
 
-            sctService.putNsMysqlSct(updateDto);
+            sctService.putNsMysqlSct(updateDto, loadTestDto.getIsOO());
 
             totalOps.incrementAndGet();
             if (isStatisticsPeriod) {
@@ -361,7 +361,7 @@ public class LoadTestService {
                 .ck(ck)
                 .build();
 
-            sctService.deleteNsMysqlSct(deleteDto);
+            sctService.deleteNsMysqlSct(deleteDto, loadTestDto.getIsOO());
 
             totalOps.incrementAndGet();
             if (isStatisticsPeriod) {
@@ -463,7 +463,7 @@ public class LoadTestService {
             // Delete all sct records only (preserve sct_error records for analysis)
             for (NsMysqlSctDto record : sctRecords) {
                 try {
-                    sctService.deleteNsMysqlSct(record);
+                    sctService.deleteNsMysqlSct(record, false);
                     deletedRecords++;
                 } catch (Exception e) {
                     log.error("Failed to delete sct record: {}", e.getMessage());
