@@ -60,11 +60,14 @@ public class LoadTestService {
 
         ExecutorService executor = Executors.newFixedThreadPool(loadTestDto.getThreadCount());
 
-        // Create and start threads
+        // Create and start threads with gradual ramp-up
+        long threadStartDelay = (loadTestDto.getRampUpTimeSeconds() * 1000L) / loadTestDto.getThreadCount();
         for (int threadId = 1; threadId <= loadTestDto.getThreadCount(); threadId++) {
             final int currentThreadId = threadId;
+            final long threadStartTime = testStartTime + (threadStartDelay * (threadId - 1));
+            
             executor.submit(() -> executeWorkerThread(
-                currentThreadId, rampUpEndTime, testEndTime, loadTestDto,
+                currentThreadId, threadStartTime, rampUpEndTime, testEndTime, loadTestDto,
                 totalOperations, statisticsOperations, exceptionsRecorded,
                 statsInsertCount, statsSelectCount, statsUpdateCount, statsDeleteCount,
                 statsInsertSuccess, statsSelectSuccess, statsUpdateSuccess, statsDeleteSuccess,
@@ -149,7 +152,7 @@ public class LoadTestService {
     }
     
     private void executeWorkerThread(
-        int threadId, long rampUpEndTime, long testEndTime, LoadTestDto loadTestDto,
+        int threadId, long threadStartTime, long rampUpEndTime, long testEndTime, LoadTestDto loadTestDto,
         AtomicLong totalOperations, AtomicLong statisticsOperations, AtomicLong exceptionsRecorded,
         AtomicInteger statsInsertCount, AtomicInteger statsSelectCount, 
         AtomicInteger statsUpdateCount, AtomicInteger statsDeleteCount,
@@ -161,11 +164,15 @@ public class LoadTestService {
         // Start each thread with a different initial operationIndex to avoid conflicts
         AtomicInteger operationIndex = new AtomicInteger(threadId * 1000);
         
-        // Add small random delay to prevent exact timing conflicts between threads
-        try {
-            Thread.sleep(threadId * 10); // 10ms, 20ms, 30ms, etc. delay per thread
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+        // Wait until this thread's scheduled start time (gradual ramp-up)
+        long startTime = System.currentTimeMillis();
+        if (startTime < threadStartTime) {
+            try {
+                Thread.sleep(threadStartTime - startTime);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
         }
 
         while (System.currentTimeMillis() < testEndTime) {
