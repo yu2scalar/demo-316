@@ -57,7 +57,7 @@ public class SqlLoadTestDto {
     private Boolean cleanupAfterTest;
     
     @Builder.Default
-    private Boolean isOO = false; // Note: This parameter is ignored for SQL-based load tests since SQL execution doesn't use OO/non-OO API distinction
+    private Boolean isOO = false; // isOO = false uses explicit transaction management (begin/commit), isOO = true executes without explicit transactions (OO mode)
     
     // Optional custom SQL templates to override default templates
     // Key: operation type (INSERT, SELECT, UPDATE, DELETE)
