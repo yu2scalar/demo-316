@@ -20,30 +20,46 @@ public class GenericSqlService {
         this.sqlSessionFactory = sqlSessionFactory;
     }
 
-    // Execute SQL Command (Generic - returns Map)
+    // Execute SQL Command (Generic - returns Map) - defaults to isOO = false for backward compatibility (explicit transactions)
     public List<Map<String, Object>> executeSQLGeneric(SqlCommandDto sqlCommandDto) throws CustomException {
+        return executeSQLGeneric(sqlCommandDto, false);
+    }
+
+    // Execute SQL Command (Generic - returns Map) with isOO parameter
+    public List<Map<String, Object>> executeSQLGeneric(SqlCommandDto sqlCommandDto, boolean isOO) throws CustomException {
         SqlSession sqlSession = null;
 
         try {
             sqlSession = sqlSessionFactory.createSqlSession();
             GenericSqlUtil genericSqlUtil = new GenericSqlUtil(sqlSession);
 
-            // Begin a transaction
-            sqlSession.begin();
-
-            List<Map<String, Object>> resultList = genericSqlUtil.executeQuery(sqlCommandDto.getSqlCommand());
-
-            sqlSession.commit();
+            List<Map<String, Object>> resultList;
+            
+            if (isOO) {
+                // isOO = true: Execute without explicit transaction management (OO mode)
+                resultList = genericSqlUtil.executeQuery(sqlCommandDto.getSqlCommand());
+            } else {
+                // isOO = false: Use explicit transaction management (standard mode)
+                sqlSession.begin();
+                resultList = genericSqlUtil.executeQuery(sqlCommandDto.getSqlCommand());
+                sqlSession.commit();
+            }
+            
             return resultList;
         } catch (Exception e) {
-            handleSqlSessionException(e, sqlSession);
+            handleSqlSessionException(e, sqlSession, isOO);
             throw new CustomException(e, determineErrorCode(e));
         }
     }
 
     private void handleSqlSessionException(Exception e, SqlSession sqlSession) {
+        handleSqlSessionException(e, sqlSession, false); // Default to standard mode (explicit transactions)
+    }
+
+    private void handleSqlSessionException(Exception e, SqlSession sqlSession, boolean isOO) {
         log.error(e.getMessage(), e);
-        if (sqlSession != null) {
+        if (sqlSession != null && !isOO) {
+            // Only attempt rollback if we're in standard mode (transaction was explicitly started)
             try {
                 sqlSession.rollback();
             } catch (Exception ex) {

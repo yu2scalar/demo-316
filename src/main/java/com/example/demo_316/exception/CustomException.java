@@ -28,4 +28,9 @@ public class CustomException extends TransactionException {
         super(ex.getMessage(), ex.getCause(), null);
         this.setErrorCode(errorCode);
     }
+    
+    public CustomException(Integer errorCode, String message) {
+        super(message, (Throwable) null, null);
+        this.setErrorCode(errorCode);
+    }
 }
