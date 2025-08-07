@@ -1,10 +1,10 @@
 package com.example.demo_316.service;
 
-import com.example.demo_316.dto.LoadTestDto;
 import com.example.demo_316.dto.LoadTestResultDto;
-import com.example.demo_316.dto.NsMysqlSctDto;
 import com.example.demo_316.dto.NsMysqlSctErrorDto;
+import com.example.demo_316.dto.SqlLoadTestDto;
 import com.example.demo_316.exception.CustomException;
+import com.example.demo_316.util.SqlTemplateGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
@@ -24,14 +23,15 @@ import java.util.concurrent.atomic.AtomicLong;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class LoadTestService {
+public class SqlLoadTestService {
     
-    private final NsMysqlSctService sctService;
+    private final GenericSqlService genericSqlService;
     private final NsMysqlSctErrorService sctErrorService;
+    private final NsMysqlSctService sctService; // For cleanup
     private final Random random = new Random();
     
-    public LoadTestResultDto executeLoadTest(LoadTestDto loadTestDto) throws CustomException {
-        // Statistics tracking
+    public LoadTestResultDto executeSqlLoadTest(SqlLoadTestDto sqlLoadTestDto) throws CustomException {
+        // Statistics tracking (same as LoadTestService)
         AtomicLong totalOperations = new AtomicLong(0);
         AtomicLong statisticsOperations = new AtomicLong(0);
         AtomicLong exceptionsRecorded = new AtomicLong(0);
@@ -55,19 +55,19 @@ public class LoadTestService {
         AtomicInteger statsDeleteError = new AtomicInteger(0);
 
         long testStartTime = System.currentTimeMillis();
-        long rampUpEndTime = testStartTime + (loadTestDto.getRampUpTimeSeconds() * 1000L);
-        long testEndTime = rampUpEndTime + (loadTestDto.getTestDurationSeconds() * 1000L);
+        long rampUpEndTime = testStartTime + (sqlLoadTestDto.getRampUpTimeSeconds() * 1000L);
+        long testEndTime = rampUpEndTime + (sqlLoadTestDto.getTestDurationSeconds() * 1000L);
 
-        ExecutorService executor = Executors.newFixedThreadPool(loadTestDto.getThreadCount());
+        ExecutorService executor = Executors.newFixedThreadPool(sqlLoadTestDto.getThreadCount());
 
         // Create and start threads with gradual ramp-up
-        long threadStartDelay = (loadTestDto.getRampUpTimeSeconds() * 1000L) / loadTestDto.getThreadCount();
-        for (int threadId = 1; threadId <= loadTestDto.getThreadCount(); threadId++) {
+        long threadStartDelay = (sqlLoadTestDto.getRampUpTimeSeconds() * 1000L) / sqlLoadTestDto.getThreadCount();
+        for (int threadId = 1; threadId <= sqlLoadTestDto.getThreadCount(); threadId++) {
             final int currentThreadId = threadId;
             final long threadStartTime = testStartTime + (threadStartDelay * (threadId - 1));
             
-            executor.submit(() -> executeWorkerThread(
-                currentThreadId, threadStartTime, rampUpEndTime, testEndTime, loadTestDto,
+            executor.submit(() -> executeSqlWorkerThread(
+                currentThreadId, threadStartTime, rampUpEndTime, testEndTime, sqlLoadTestDto,
                 totalOperations, statisticsOperations, exceptionsRecorded,
                 statsInsertCount, statsSelectCount, statsUpdateCount, statsDeleteCount,
                 statsInsertSuccess, statsSelectSuccess, statsUpdateSuccess, statsDeleteSuccess,
@@ -79,7 +79,7 @@ public class LoadTestService {
         executor.shutdown();
         try {
             executor.awaitTermination(
-                loadTestDto.getTestDurationSeconds() + loadTestDto.getRampUpTimeSeconds() + 60, 
+                sqlLoadTestDto.getTestDurationSeconds() + sqlLoadTestDto.getRampUpTimeSeconds() + 60, 
                 TimeUnit.SECONDS
             );
         } catch (InterruptedException e) {
@@ -97,21 +97,21 @@ public class LoadTestService {
             throughputPerMinute = (statisticsOperations.get() * 60000.0) / statisticsTime;
         }
 
-        // Cleanup if requested
+        // Cleanup if requested (reuse existing cleanup logic from LoadTestService)
         boolean cleanupExecuted = false;
         int cleanupRecordsDeleted = 0;
         
-        log.info("Cleanup check: cleanupAfterTest = {}", loadTestDto.getCleanupAfterTest());
+        log.info("Cleanup check: cleanupAfterTest = {}", sqlLoadTestDto.getCleanupAfterTest());
         
-        if (loadTestDto.getCleanupAfterTest() != null && loadTestDto.getCleanupAfterTest()) {
-            log.info("Executing cleanup for PK: {}", loadTestDto.getPk());
-            cleanupRecordsDeleted = performCleanup(loadTestDto.getPk());
+        if (sqlLoadTestDto.getCleanupAfterTest() != null && sqlLoadTestDto.getCleanupAfterTest()) {
+            log.info("Executing cleanup for PK: {}", sqlLoadTestDto.getPk());
+            cleanupRecordsDeleted = performCleanup(sqlLoadTestDto.getPk());
             cleanupExecuted = true;
         } else {
             log.info("Cleanup skipped - cleanupAfterTest is false or null");
         }
 
-        // Build and return result
+        // Build and return result (same structure as LoadTestService)
         return LoadTestResultDto.builder()
             .totalOperations(totalOperations.intValue())
             .statisticsOperations(statisticsOperations.intValue())
@@ -138,21 +138,21 @@ public class LoadTestService {
             .rampUpTimeMs(rampUpTime)
             .throughputPerMinute(throughputPerMinute)
             .ratios(Map.of(
-                "select", loadTestDto.getSelectRatio(),
-                "update", loadTestDto.getUpdateRatio(),
-                "delete", loadTestDto.getDeleteRatio()
+                "select", sqlLoadTestDto.getSelectRatio(),
+                "update", sqlLoadTestDto.getUpdateRatio(),
+                "delete", sqlLoadTestDto.getDeleteRatio()
             ))
-            .threadCount(loadTestDto.getThreadCount())
+            .threadCount(sqlLoadTestDto.getThreadCount())
             .exceptionsRecorded(exceptionsRecorded.intValue())
-            .testDurationSeconds(loadTestDto.getTestDurationSeconds())
+            .testDurationSeconds(sqlLoadTestDto.getTestDurationSeconds())
             .actualTestDurationMs(statisticsTime)
             .cleanupExecuted(cleanupExecuted)
             .cleanupRecordsDeleted(cleanupRecordsDeleted)
             .build();
     }
     
-    private void executeWorkerThread(
-        int threadId, long threadStartTime, long rampUpEndTime, long testEndTime, LoadTestDto loadTestDto,
+    private void executeSqlWorkerThread(
+        int threadId, long threadStartTime, long rampUpEndTime, long testEndTime, SqlLoadTestDto sqlLoadTestDto,
         AtomicLong totalOperations, AtomicLong statisticsOperations, AtomicLong exceptionsRecorded,
         AtomicInteger statsInsertCount, AtomicInteger statsSelectCount, 
         AtomicInteger statsUpdateCount, AtomicInteger statsDeleteCount,
@@ -187,71 +187,71 @@ public class LoadTestService {
             log.debug("Thread {} generating CK: {} (operationIndex: {})", threadId, currentCk, currentOperationIndex);
 
             // Always perform INSERT
-            performInsert(loadTestDto.getPk(), currentCk, threadId, currentOperationIndex,
+            performSqlInsert(sqlLoadTestDto.getPk(), currentCk, threadId, currentOperationIndex,
                         isStatisticsPeriod, totalOperations, statisticsOperations,
-                        statsInsertCount, statsInsertSuccess, statsInsertError, exceptionsRecorded, loadTestDto);
+                        statsInsertCount, statsInsertSuccess, statsInsertError, exceptionsRecorded, sqlLoadTestDto);
 
-            // Perform SELECT based on ratio
-            double selectRatio = loadTestDto.getSelectRatio();
+            // Perform SELECT based on ratio (same logic as LoadTestService)
+            double selectRatio = sqlLoadTestDto.getSelectRatio();
             int selectLoops = (int) selectRatio;
             double selectFractional = selectRatio - selectLoops;
             
             // Execute guaranteed select loops
             for (int i = 0; i < selectLoops; i++) {
-                performSelect(loadTestDto.getPk(), currentCk, threadId, currentOperationIndex,
+                performSqlSelect(sqlLoadTestDto.getPk(), currentCk, threadId, currentOperationIndex,
                             isStatisticsPeriod, totalOperations, statisticsOperations,
-                            statsSelectCount, statsSelectSuccess, statsSelectError, exceptionsRecorded, loadTestDto);
+                            statsSelectCount, statsSelectSuccess, statsSelectError, exceptionsRecorded, sqlLoadTestDto);
             }
             
             // Additional select loop based on fractional probability
             if (selectFractional > 0 && random.nextDouble() < selectFractional) {
-                performSelect(loadTestDto.getPk(), currentCk, threadId, currentOperationIndex,
+                performSqlSelect(sqlLoadTestDto.getPk(), currentCk, threadId, currentOperationIndex,
                             isStatisticsPeriod, totalOperations, statisticsOperations,
-                            statsSelectCount, statsSelectSuccess, statsSelectError, exceptionsRecorded, loadTestDto);
+                            statsSelectCount, statsSelectSuccess, statsSelectError, exceptionsRecorded, sqlLoadTestDto);
             }
 
             // Perform UPDATE based on ratio (handle fractional)
-            double updateRatio = loadTestDto.getUpdateRatio();
+            double updateRatio = sqlLoadTestDto.getUpdateRatio();
             int updateLoops = (int) updateRatio;
             double updateFractional = updateRatio - updateLoops;
 
             // Execute guaranteed update loops
             for (int i = 0; i < updateLoops; i++) {
-                performUpdate(loadTestDto.getPk(), currentCk, threadId, currentOperationIndex, i, false,
+                performSqlUpdate(sqlLoadTestDto.getPk(), currentCk, threadId, currentOperationIndex, i, false,
                             isStatisticsPeriod, totalOperations, statisticsOperations,
-                            statsUpdateCount, statsUpdateSuccess, statsUpdateError, exceptionsRecorded, loadTestDto);
+                            statsUpdateCount, statsUpdateSuccess, statsUpdateError, exceptionsRecorded, sqlLoadTestDto);
             }
 
             // Additional update loop based on fractional probability
             if (updateFractional > 0 && random.nextDouble() < updateFractional) {
-                performUpdate(loadTestDto.getPk(), currentCk, threadId, currentOperationIndex, updateLoops, true,
+                performSqlUpdate(sqlLoadTestDto.getPk(), currentCk, threadId, currentOperationIndex, updateLoops, true,
                             isStatisticsPeriod, totalOperations, statisticsOperations,
-                            statsUpdateCount, statsUpdateSuccess, statsUpdateError, exceptionsRecorded, loadTestDto);
+                            statsUpdateCount, statsUpdateSuccess, statsUpdateError, exceptionsRecorded, sqlLoadTestDto);
             }
 
             // Perform DELETE based on ratio
-            double deleteRatio = loadTestDto.getDeleteRatio();
+            double deleteRatio = sqlLoadTestDto.getDeleteRatio();
             int deleteLoops = (int) deleteRatio;
             double deleteFractional = deleteRatio - deleteLoops;
             
             // Execute guaranteed delete loops
             for (int i = 0; i < deleteLoops; i++) {
-                performDelete(loadTestDto.getPk(), currentCk, threadId, currentOperationIndex,
+                performSqlDelete(sqlLoadTestDto.getPk(), currentCk, threadId, currentOperationIndex,
                             isStatisticsPeriod, totalOperations, statisticsOperations,
-                            statsDeleteCount, statsDeleteSuccess, statsDeleteError, exceptionsRecorded, loadTestDto);
+                            statsDeleteCount, statsDeleteSuccess, statsDeleteError, exceptionsRecorded, sqlLoadTestDto);
             }
             
             // Additional delete loop based on fractional probability
             if (deleteFractional > 0 && random.nextDouble() < deleteFractional) {
-                performDelete(loadTestDto.getPk(), currentCk, threadId, currentOperationIndex,
+                performSqlDelete(sqlLoadTestDto.getPk(), currentCk, threadId, currentOperationIndex,
                             isStatisticsPeriod, totalOperations, statisticsOperations,
-                            statsDeleteCount, statsDeleteSuccess, statsDeleteError, exceptionsRecorded, loadTestDto);
+                            statsDeleteCount, statsDeleteSuccess, statsDeleteError, exceptionsRecorded, sqlLoadTestDto);
             }
 
             // Optional delay between operations
-            if (loadTestDto.getOperationDelayMs() != null && loadTestDto.getOperationDelayMs() > 0) {
+            if (sqlLoadTestDto.getOperationDelayMs() != null && sqlLoadTestDto.getOperationDelayMs() > 0) {
                 try {
-                    Thread.sleep(loadTestDto.getOperationDelayMs());
+                    Thread.sleep(sqlLoadTestDto.getOperationDelayMs());
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     break;
@@ -260,85 +260,15 @@ public class LoadTestService {
         }
     }
 
-    private void performInsert(Integer pk, Integer ck, int threadId, int operationIndex,
-                              boolean isStatisticsPeriod, AtomicLong totalOps, AtomicLong statsOps,
-                              AtomicInteger count, AtomicInteger success, AtomicInteger error, 
-                              AtomicLong exceptionsRecorded, LoadTestDto loadTestDto) {
+    private void performSqlInsert(Integer pk, Integer ck, int threadId, int operationIndex,
+                                 boolean isStatisticsPeriod, AtomicLong totalOps, AtomicLong statsOps,
+                                 AtomicInteger count, AtomicInteger success, AtomicInteger error, 
+                                 AtomicLong exceptionsRecorded, SqlLoadTestDto sqlLoadTestDto) {
         try {
-            NsMysqlSctDto insertDto = NsMysqlSctDto.builder()
-                .pk(pk)
-                .ck(ck)
-                .stringValue("LoadTest_T" + threadId + "_" + operationIndex)
-                .bintValue((long) (threadId * 1000000 + operationIndex))
-                .build();
-
-            sctService.postNsMysqlSct(insertDto, loadTestDto.getIsOO());
-
-            totalOps.incrementAndGet();
-            if (isStatisticsPeriod) {
-                statsOps.incrementAndGet();
-                count.incrementAndGet();
-                success.incrementAndGet();
-            }
-        } catch (Exception e) {
-            recordException(pk, ck, "INSERT", e, exceptionsRecorded);
-            waitForRetryInterval(loadTestDto.getExceptionRetryInterval());
-            totalOps.incrementAndGet();
-            if (isStatisticsPeriod) {
-                statsOps.incrementAndGet();
-                count.incrementAndGet();
-                error.incrementAndGet();
-            }
-        }
-    }
-
-    private void performSelect(Integer pk, Integer ck, int threadId, int operationIndex,
-                              boolean isStatisticsPeriod, AtomicLong totalOps, AtomicLong statsOps,
-                              AtomicInteger count, AtomicInteger success, AtomicInteger error, 
-                              AtomicLong exceptionsRecorded, LoadTestDto loadTestDto) {
-        try {
-            NsMysqlSctDto selectDto = NsMysqlSctDto.builder()
-                .pk(pk)
-                .ck(ck)
-                .build();
-
-            sctService.getNsMysqlSct(selectDto, loadTestDto.getIsOO());
-
-            totalOps.incrementAndGet();
-            if (isStatisticsPeriod) {
-                statsOps.incrementAndGet();
-                count.incrementAndGet();
-                success.incrementAndGet();
-            }
-        } catch (Exception e) {
-            recordException(pk, ck, "SELECT", e, exceptionsRecorded);
-            waitForRetryInterval(loadTestDto.getExceptionRetryInterval());
-            totalOps.incrementAndGet();
-            if (isStatisticsPeriod) {
-                statsOps.incrementAndGet();
-                count.incrementAndGet();
-                error.incrementAndGet();
-            }
-        }
-    }
-
-    private void performUpdate(Integer pk, Integer ck, int threadId, int operationIndex, int updateCount, boolean isFractional,
-                              boolean isStatisticsPeriod, AtomicLong totalOps, AtomicLong statsOps,
-                              AtomicInteger count, AtomicInteger success, AtomicInteger error, 
-                              AtomicLong exceptionsRecorded, LoadTestDto loadTestDto) {
-        try {
-            String stringValue = isFractional ? 
-                "Updated_fractional_T" + threadId + "_" + operationIndex :
-                "Updated_T" + threadId + "_" + operationIndex + "_" + updateCount;
+            String sqlTemplate = getSqlTemplate("INSERT", sqlLoadTestDto.getCustomSqlTemplates());
+            String resolvedSql = SqlTemplateGenerator.resolveParameters(sqlTemplate, pk, ck, threadId, operationIndex);
             
-            NsMysqlSctDto updateDto = NsMysqlSctDto.builder()
-                .pk(pk)
-                .ck(ck)
-                .stringValue(stringValue)
-                .bintValue((long) (threadId * 1000000 + operationIndex + updateCount * 100))
-                .build();
-
-            sctService.putNsMysqlSct(updateDto, loadTestDto.getIsOO());
+            genericSqlService.executeSQLGeneric(new com.example.demo_316.dto.SqlCommandDto(resolvedSql));
 
             totalOps.incrementAndGet();
             if (isStatisticsPeriod) {
@@ -347,8 +277,8 @@ public class LoadTestService {
                 success.incrementAndGet();
             }
         } catch (Exception e) {
-            recordException(pk, ck, "UPDATE", e, exceptionsRecorded);
-            waitForRetryInterval(loadTestDto.getExceptionRetryInterval());
+            recordException(pk, ck, "SQL_INSERT", e, exceptionsRecorded);
+            waitForRetryInterval(sqlLoadTestDto.getExceptionRetryInterval());
             totalOps.incrementAndGet();
             if (isStatisticsPeriod) {
                 statsOps.incrementAndGet();
@@ -358,17 +288,15 @@ public class LoadTestService {
         }
     }
 
-    private void performDelete(Integer pk, Integer ck, int threadId, int operationIndex,
-                              boolean isStatisticsPeriod, AtomicLong totalOps, AtomicLong statsOps,
-                              AtomicInteger count, AtomicInteger success, AtomicInteger error, 
-                              AtomicLong exceptionsRecorded, LoadTestDto loadTestDto) {
+    private void performSqlSelect(Integer pk, Integer ck, int threadId, int operationIndex,
+                                 boolean isStatisticsPeriod, AtomicLong totalOps, AtomicLong statsOps,
+                                 AtomicInteger count, AtomicInteger success, AtomicInteger error, 
+                                 AtomicLong exceptionsRecorded, SqlLoadTestDto sqlLoadTestDto) {
         try {
-            NsMysqlSctDto deleteDto = NsMysqlSctDto.builder()
-                .pk(pk)
-                .ck(ck)
-                .build();
-
-            sctService.deleteNsMysqlSct(deleteDto, loadTestDto.getIsOO());
+            String sqlTemplate = getSqlTemplate("SELECT", sqlLoadTestDto.getCustomSqlTemplates());
+            String resolvedSql = SqlTemplateGenerator.resolveParameters(sqlTemplate, pk, ck, threadId, operationIndex);
+            
+            genericSqlService.executeSQLGeneric(new com.example.demo_316.dto.SqlCommandDto(resolvedSql));
 
             totalOps.incrementAndGet();
             if (isStatisticsPeriod) {
@@ -377,8 +305,8 @@ public class LoadTestService {
                 success.incrementAndGet();
             }
         } catch (Exception e) {
-            recordException(pk, ck, "DELETE", e, exceptionsRecorded);
-            waitForRetryInterval(loadTestDto.getExceptionRetryInterval());
+            recordException(pk, ck, "SQL_SELECT", e, exceptionsRecorded);
+            waitForRetryInterval(sqlLoadTestDto.getExceptionRetryInterval());
             totalOps.incrementAndGet();
             if (isStatisticsPeriod) {
                 statsOps.incrementAndGet();
@@ -388,6 +316,73 @@ public class LoadTestService {
         }
     }
 
+    private void performSqlUpdate(Integer pk, Integer ck, int threadId, int operationIndex, int updateCount, boolean isFractional,
+                                 boolean isStatisticsPeriod, AtomicLong totalOps, AtomicLong statsOps,
+                                 AtomicInteger count, AtomicInteger success, AtomicInteger error, 
+                                 AtomicLong exceptionsRecorded, SqlLoadTestDto sqlLoadTestDto) {
+        try {
+            String sqlTemplate = getSqlTemplate("UPDATE", sqlLoadTestDto.getCustomSqlTemplates());
+            String resolvedSql = SqlTemplateGenerator.resolveParameters(sqlTemplate, pk, ck, threadId, operationIndex);
+            
+            genericSqlService.executeSQLGeneric(new com.example.demo_316.dto.SqlCommandDto(resolvedSql));
+
+            totalOps.incrementAndGet();
+            if (isStatisticsPeriod) {
+                statsOps.incrementAndGet();
+                count.incrementAndGet();
+                success.incrementAndGet();
+            }
+        } catch (Exception e) {
+            recordException(pk, ck, "SQL_UPDATE", e, exceptionsRecorded);
+            waitForRetryInterval(sqlLoadTestDto.getExceptionRetryInterval());
+            totalOps.incrementAndGet();
+            if (isStatisticsPeriod) {
+                statsOps.incrementAndGet();
+                count.incrementAndGet();
+                error.incrementAndGet();
+            }
+        }
+    }
+
+    private void performSqlDelete(Integer pk, Integer ck, int threadId, int operationIndex,
+                                 boolean isStatisticsPeriod, AtomicLong totalOps, AtomicLong statsOps,
+                                 AtomicInteger count, AtomicInteger success, AtomicInteger error, 
+                                 AtomicLong exceptionsRecorded, SqlLoadTestDto sqlLoadTestDto) {
+        try {
+            String sqlTemplate = getSqlTemplate("DELETE", sqlLoadTestDto.getCustomSqlTemplates());
+            String resolvedSql = SqlTemplateGenerator.resolveParameters(sqlTemplate, pk, ck, threadId, operationIndex);
+            
+            genericSqlService.executeSQLGeneric(new com.example.demo_316.dto.SqlCommandDto(resolvedSql));
+
+            totalOps.incrementAndGet();
+            if (isStatisticsPeriod) {
+                statsOps.incrementAndGet();
+                count.incrementAndGet();
+                success.incrementAndGet();
+            }
+        } catch (Exception e) {
+            recordException(pk, ck, "SQL_DELETE", e, exceptionsRecorded);
+            waitForRetryInterval(sqlLoadTestDto.getExceptionRetryInterval());
+            totalOps.incrementAndGet();
+            if (isStatisticsPeriod) {
+                statsOps.incrementAndGet();
+                count.incrementAndGet();
+                error.incrementAndGet();
+            }
+        }
+    }
+    
+    private String getSqlTemplate(String operationType, Map<String, String> customTemplates) {
+        // Check if custom template is provided
+        if (customTemplates != null && customTemplates.containsKey(operationType)) {
+            return customTemplates.get(operationType);
+        }
+        
+        // Fall back to default templates from SqlTemplateGenerator
+        return SqlTemplateGenerator.getTemplateByOperation(operationType);
+    }
+    
+    // Reuse exception handling logic from LoadTestService
     private void waitForRetryInterval(Long retryInterval) {
         if (retryInterval != null && retryInterval > 0) {
             try {
@@ -460,15 +455,16 @@ public class LoadTestService {
         return truncated + "\n... [TRUNCATED - Original length: " + message.length() + " chars]";
     }
 
+    // Reuse cleanup logic from LoadTestService
     private int performCleanup(Integer pk) {
         int deletedRecords = 0;
         try {
             // Get all records with the specified PK from sct table
-            NsMysqlSctDto searchDto = NsMysqlSctDto.builder().pk(pk).build();
-            List<NsMysqlSctDto> sctRecords = sctService.getNsMysqlSctListByPk(searchDto);
+            com.example.demo_316.dto.NsMysqlSctDto searchDto = com.example.demo_316.dto.NsMysqlSctDto.builder().pk(pk).build();
+            java.util.List<com.example.demo_316.dto.NsMysqlSctDto> sctRecords = sctService.getNsMysqlSctListByPk(searchDto);
 
             // Delete all sct records only (preserve sct_error records for analysis)
-            for (NsMysqlSctDto record : sctRecords) {
+            for (com.example.demo_316.dto.NsMysqlSctDto record : sctRecords) {
                 try {
                     sctService.deleteNsMysqlSct(record, false);
                     deletedRecords++;
@@ -477,9 +473,9 @@ public class LoadTestService {
                 }
             }
 
-            log.info("Cleanup completed: {} sct records deleted for PK {}. Error records preserved for analysis.", deletedRecords, pk);
+            log.info("SQL Load Test cleanup completed: {} sct records deleted for PK {}. Error records preserved for analysis.", deletedRecords, pk);
         } catch (Exception e) {
-            log.error("Cleanup failed: {}", e.getMessage());
+            log.error("SQL Load Test cleanup failed: {}", e.getMessage());
         }
         return deletedRecords;
     }

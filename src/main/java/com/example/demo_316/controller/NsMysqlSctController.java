@@ -3,11 +3,13 @@ package com.example.demo_316.controller;
 import com.example.demo_316.service.NsMysqlSctService;
 import com.example.demo_316.service.NsMysqlSctErrorService;
 import com.example.demo_316.service.LoadTestService;
+import com.example.demo_316.service.SqlLoadTestService;
 import com.example.demo_316.dto.NsMysqlSctDto;
 import com.example.demo_316.dto.NsMysqlSctErrorDto;
 import com.example.demo_316.dto.ResponseStatusDto;
 import com.example.demo_316.dto.SqlCommandDto;
 import com.example.demo_316.dto.LoadTestDto;
+import com.example.demo_316.dto.SqlLoadTestDto;
 import com.example.demo_316.dto.LoadTestResultDto;
 import com.example.demo_316.exception.CustomException;
 import org.springframework.http.HttpStatus;
@@ -28,6 +30,9 @@ public class NsMysqlSctController {
 
     @Autowired
     private LoadTestService loadTestService;
+
+    @Autowired
+    private SqlLoadTestService sqlLoadTestService;
 
     @PostMapping
     public ResponseEntity<ResponseStatusDto> postNsMysqlSct(@RequestBody NsMysqlSctDto sctDto) throws CustomException {
@@ -98,6 +103,12 @@ public class NsMysqlSctController {
     @PostMapping("/loadTest")
     public ResponseEntity<LoadTestResultDto> loadTest(@RequestBody LoadTestDto loadTestDto) throws CustomException {
         LoadTestResultDto result = loadTestService.executeLoadTest(loadTestDto);
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/loadTest/sql")
+    public ResponseEntity<LoadTestResultDto> sqlLoadTest(@RequestBody SqlLoadTestDto sqlLoadTestDto) throws CustomException {
+        LoadTestResultDto result = sqlLoadTestService.executeSqlLoadTest(sqlLoadTestDto);
         return ResponseEntity.ok(result);
     }
 }
