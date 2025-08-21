@@ -22,9 +22,18 @@ public class NsMysqlSctError {
         private String exception;
         private LocalDateTime exceptionAt;
         public Key getPartitionKey(){
+            if (getPk() == null) {
+                throw new IllegalStateException("Partition key (pk) cannot be null");
+            }
             return Key.newBuilder().addInt(PK, getPk()).build();
         }
         public Key getClusteringKey(){
+            if (getCk() == null) {
+                throw new IllegalStateException("Clustering key (ck) cannot be null");
+            }
+            if (getExceptionAt() == null) {
+                throw new IllegalStateException("Clustering key (exception_at) cannot be null");
+            }
             return Key.newBuilder()
                 .addInt(CK, getCk())
                 .addTimestamp(EXCEPTION_AT, getExceptionAt())
