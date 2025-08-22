@@ -24,10 +24,16 @@ public class NsMysqlSct {
     private Long bintValue;
 
     public Key getPartitionKey() {
+        if (getPk() == null) {
+            throw new IllegalStateException("Partition key (pk) cannot be null");
+        }
         return Key.newBuilder().addInt(PK, getPk()).build();
     }
 
     public Key getClusteringKey() {
+        if (getCk() == null) {
+            throw new IllegalStateException("Clustering key (ck) cannot be null");
+        }
         return Key.newBuilder().addInt(CK, getCk()).build();
     }
 }
